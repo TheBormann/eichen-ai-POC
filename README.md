@@ -95,8 +95,24 @@ The agent should catch all four.
 
 ---
 
+## Testing
+
+**No API key?** Run `npm run validate` to verify code structure (25 automated checks)
+
+**Have API key?** See **[Testing Guide](docs/TESTING.md)** for 5 different test options
+
+**Quick validation:**
+```bash
+npm run validate           # Checks code structure (no API needed)
+npm run app               # Starts target app
+npm run verify            # Runs full verification (requires API key)
+```
+
+---
+
 ## Docs
 
+- **[Testing Guide](docs/TESTING.md)** — 5 ways to test, with and without API keys
 - **[Technical Architecture](docs/poc-outline.md)** — How the agent is built, API usage, design decisions
 - **[MVP Plan](docs/MVP-PLAN.md)** — What this becomes after the POC
 - **[Robustness](docs/ROBUSTNESS.md)** — What `verify-robust.ts` adds and why
