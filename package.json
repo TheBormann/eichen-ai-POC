@@ -1,0 +1,24 @@
+{
+  "name": "eichen-ai-poc",
+  "version": "0.1.0",
+  "type": "module",
+  "scripts": {
+    "app": "npm run --prefix target-app dev",
+    "agent": "tsx agent/verify.ts",
+    "agent:robust": "tsx agent/verify-robust.ts",
+    "verify": "npm run agent",
+    "verify:robust": "npm run agent:robust",
+    "test": "tsx agent/test-runner.ts",
+    "validate": "tsx agent/validate-structure.ts"
+  },
+  "dependencies": {
+    "@browserbasehq/stagehand": "latest",
+    "dotenv": "^16.0.0",
+    "zod": "^3.0.0"
+  },
+  "devDependencies": {
+    "@types/node": "^20.0.0",
+    "tsx": "^4.0.0",
+    "typescript": "^5.0.0"
+  }
+}
