@@ -58,28 +58,47 @@ When a customer onboards, we read all their existing documentation (Notion, Conf
 
 Each claim in the library is linked back to the source doc it came from. If a claim can't be verified (element not found in the current staging env), it's marked `skipped — not visible` rather than `fail`. This is how we handle feature flags without needing to know which flags exist.
 
-### Phase 2 — Incremental verification on new changes
+### Phase 2 — Incremental verification triggered by deploys, enriched by Jira
 
-When a new Jira ticket is closed or a deploy happens:
+This is where Jira-as-primary-trigger breaks down. Jira ticket discipline varies wildly across teams, and the exact changes we care most about — toggle label renamed, toast copy tweaked, validation message changed — are precisely the kind that never get a Jira ticket. Relying on ticket linking means we miss the most common case.
+
+The right model separates **trigger** from **context**:
 
 ```
-New Jira ticket / deploy event
+TRIGGER (reliable — fires on every code change)
+  Deploy event / PR merge to main
          │
          ▼
-  Agent reads the new ticket
+CONTEXT ENRICHMENT (opportunistic — use when available)
+  Pull any Jira tickets linked to commits in this deploy
+  Pull the PR description and commit messages
          │
          ▼
-  Compares ticket content to existing test library:
-  "Which existing tests could this change affect?"
+CLAIM SELECTION
+  If linked tickets found → LLM asks "which existing claims could this change affect?" → re-run those
+  If no tickets found → fall back to full test library run (or heuristic subset based on changed files)
          │
          ▼
-  Re-runs only the affected tests
+  Re-run selected claims against staging
          │
          ▼
-  Reports: what drifted, which doc claim is now wrong, which source ticket to update
+  Report: what drifted, which claim, which doc to update, which commit introduced it
 ```
 
-This is diff-based testing. It gets cheaper and faster as the test library matures, not more expensive. You never test everything on every deploy — you test what the change touched.
+**Trigger reliability comparison:**
+
+| Trigger | Reliability | Catches hotfixes? | Setup friction |
+|---|---|---|---|
+| Deploy event (Vercel, GitHub Actions) | High | Yes | Low — one webhook |
+| PR merge to main | High | Yes | Low — GitHub Actions |
+| Jira ticket close | Medium | No — only if linked | Medium |
+| Nightly schedule | High | Yes (with latency) | Zero |
+| Manual | On demand | Yes | Zero |
+| Feature flag event (Split.io webhook) | Medium | Flag changes only | Medium |
+
+**The practical answer:** deploy event is the primary trigger. Jira tickets are context that makes the claim selection smarter when available — not a dependency. A hotfix with no ticket still fires a run; it just runs the full library rather than a targeted subset.
+
+This is diff-based testing. As the test library matures and Jira linking improves, runs get cheaper. But correctness never depends on team ticket discipline.
 
 ### Why this solves the feature flag problem
 
@@ -164,18 +183,19 @@ Priority order:
 
 ---
 
-### Stage 4 — Incremental diffing on new Jira tickets (3–5 days)
+### Stage 4 — Deploy-triggered incremental verification (3–5 days)
 
-When a new ticket is created or closed:
+Connect the runner to a deploy event so it fires automatically on every ship, regardless of whether a Jira ticket exists.
 
-- [ ] Pull the ticket body
-- [ ] LLM compares ticket to existing claim library: "which claims could this change affect?"
-- [ ] Re-run only affected claims against staging
-- [ ] If drift detected: report links to both the failing claim and the Jira ticket that caused the change
+- [ ] GitHub Actions webhook: on push to main or on deployment, run the claim library against staging
+- [ ] Pull any Jira tickets linked to commits in the deploy (via GitHub → Jira smart commits or PR body parsing)
+- [ ] If linked tickets found: LLM identifies which claims they could affect → re-run targeted subset
+- [ ] If no linked tickets: run full claim library (or a heuristic subset based on commit diff)
+- [ ] Report links finding to the specific commit and, if available, the Jira ticket
 
-This is the highest-value automation: you catch drift at the moment it happens, not weeks later.
+Jira ticket linking is context that makes runs cheaper and more targeted — it is not a correctness dependency. The deploy event fires regardless.
 
-**Deliverable:** drift detected and reported within minutes of a Jira ticket being closed
+**Deliverable:** drift detected and reported within minutes of every deploy to staging, with or without linked Jira tickets
 
 ---
 

@@ -81,8 +81,8 @@ The POC runs the full doc on every run. The MVP needs a smarter data model:
 **Phase 1 — Build a test library from existing docs**  
 Read all customer docs once, extract every testable claim, store as a versioned library linked back to source. Run baseline verification on staging. Claims for feature-flagged elements that aren't visible get marked `skipped — not visible`, not `fail`.
 
-**Phase 2 — Incremental verification on change events**  
-When a new Jira ticket closes or a deploy fires, the agent reads the new ticket and asks: *which existing tests could this change affect?* It re-runs only those. Drift is caught at the moment of change, not weeks later.
+**Phase 2 — Incremental verification on every deploy**  
+The trigger is the deploy event — reliable, fires on every code change, doesn't depend on team ticket discipline. The agent then enriches context from any Jira tickets linked to commits in that deploy. If linked tickets exist, the LLM identifies which existing claims they could affect and re-runs only those. If no tickets are linked (hotfix, minor copy change, undisciplined team), it falls back to the full claim library. Jira is context, not a dependency — a hotfix with no ticket still gets caught.
 
 This solves three things at once:
 - Feature flags — invisible claims are skipped, not failed; over time the library maps which claims appear in which environments
