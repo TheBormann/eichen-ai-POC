@@ -10,6 +10,12 @@ target-app/node_modules/
 dist/
 target-app/dist/
 
+# Authentication sessions
+auth/session.json
+
+# Reports
+reports/
+
 # OS files
 .DS_Store
 Thumbs.db

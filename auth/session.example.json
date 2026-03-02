@@ -1,0 +1,5 @@
+{
+  "cookies": [],
+  "origins": [],
+  "_comment": "This is what a saved auth session looks like. Run 'npm run auth:save' to create your own session.json file."
+}

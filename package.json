@@ -4,11 +4,8 @@
   "type": "module",
   "scripts": {
     "app": "npm run --prefix target-app dev",
-    "agent": "tsx agent/verify.ts",
-    "agent:robust": "tsx agent/verify-robust.ts",
-    "verify": "npm run agent",
-    "verify:robust": "npm run agent:robust",
-    "test": "tsx agent/test-runner.ts",
+    "verify": "tsx agent/runner.ts",
+    "auth:save": "tsx auth/save-session.ts",
     "validate": "tsx agent/validate-structure.ts"
   },
   "dependencies": {

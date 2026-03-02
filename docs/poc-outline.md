@@ -276,11 +276,71 @@ npm run verify
 
 ## Definition of Done
 
-- [ ] `target-app` runs on `http://localhost:5173` without errors
-- [ ] All 4 intentional bugs are present in the app
-- [ ] `specs/dashboard.md` is written in specific, quoted acceptance-criteria style
-- [ ] `npm run verify` completes and prints a report showing failures
-- [ ] `npm run validate` passes all 25 structure checks
-- [ ] Browser is always closed (try/finally)
-- [ ] `.env` is in `.gitignore`; `.env.example` is committed
-- [ ] One full run completes in under 90 seconds
+- [x] `target-app` runs on `http://localhost:5173` without errors
+- [x] All 4 intentional bugs are present in the app
+- [x] `specs/dashboard.md` is written in specific, quoted acceptance-criteria style
+- [x] `npm run verify` completes and prints a report showing failures
+- [x] `npm run validate` passes all 25 structure checks
+- [x] Browser is always closed (try/finally)
+- [x] `.env` is in `.gitignore`; `.env.example` is committed
+- [x] One full run completes in under 90 seconds
+
+---
+
+## Post-POC Refactor (March 2026)
+
+The original POC had two scripts (`verify.ts` and `verify-robust.ts`) with divergent logic. After validating the core thesis, we consolidated to a single production-ready runner.
+
+### What Changed
+
+**Before:** Two scripts with hardcoded paths
+```typescript
+// verify.ts — demo script with manual comparison
+// verify-robust.ts — production script with retries
+```
+
+**After:** Single unified runner driven by environment variables
+```typescript
+// agent/runner.ts — all config via .env
+TARGET_URL=http://localhost:5173
+SPEC_PATH=./specs/dashboard.md
+AUTH_SESSION_PATH=./auth/session.json
+```
+
+### Key Improvements
+
+1. **Authentication support** — Real staging environments require login. New workflow:
+   - Run `npm run auth:save` → browser opens → user logs in manually
+   - Session saved to `auth/session.json` (gitignored)
+   - Runner loads session automatically via Playwright's `storageState`
+
+2. **Config-driven execution** — All parameters via `.env`:
+   - `TARGET_URL` — which staging/demo instance to verify
+   - `SPEC_PATH` — which spec file to use as ground truth
+   - `HEADLESS` — show browser or run headless
+   - `MAX_STEPS` — agent step limit
+   - `REPORTS_DIR` — where to save JSON reports and screenshots
+
+3. **Structured outputs** — Every run generates:
+   - `reports/report-<timestamp>.json` — structured verification results
+   - `reports/<timestamp>_initial-state.png` — screenshot of starting state
+   - Exit codes: 0 (pass), 1 (drift), 2 (error)
+
+4. **Deleted redundancy** — Removed `verify.ts`, `verify-robust.ts`, `test-runner.ts`. One script does everything.
+
+### Files Created
+
+```
+auth/
+├── save-session.ts          # Helper: open browser → user logins → save session
+└── session.example.json     # Template for auth sessions
+
+agent/
+└── runner.ts                # Unified verification runner (replaces 3 old scripts)
+
+reports/                     # Generated outputs (gitignored)
+├── report-*.json
+└── *_initial-state.png
+```
+
+See **[REFACTOR-PLAN.md](REFACTOR-PLAN.md)** for full architecture decisions.

@@ -37,7 +37,10 @@ cd target-app && npm install && cd ..
 
 # 2. Configure
 cp .env.example .env
-# Edit .env — add OPENAI_API_KEY or ANTHROPIC_API_KEY
+# Edit .env — add your API key and configure:
+#   TARGET_URL=http://localhost:5173
+#   SPEC_PATH=./specs/dashboard.md
+#   HEADLESS=false
 
 # 3. Start the demo app (terminal 1)
 npm run app
@@ -46,7 +49,10 @@ npm run app
 npm run verify
 ```
 
-The agent opens Chrome, navigates the app, compares it against `specs/dashboard.md`, and prints a structured report.
+The agent opens Chrome, navigates the app, compares it against the spec, and generates:
+- Structured JSON report in `reports/`
+- Screenshot of initial state
+- Exit code: 0 (pass), 1 (drift), 2 (error)
 
 ---
 
@@ -55,15 +61,18 @@ The agent opens Chrome, navigates the app, compares it against `specs/dashboard.
 ```
 eichen-ai-POC/
 ├── agent/
-│   ├── verify.ts            # Demo script — clear output, shows reasoning
-│   └── verify-robust.ts     # Production script — retries, JSON reports, screenshots
+│   └── runner.ts            # Unified verification runner
+├── auth/
+│   ├── save-session.ts      # Helper to save login sessions
+│   └── session.example.json # Template for auth sessions
 ├── specs/
 │   └── dashboard.md         # The spec the agent verifies against
+├── reports/                 # Generated JSON reports and screenshots (gitignored)
 ├── target-app/              # Dummy React app with 4 intentional bugs
 └── docs/
-    ├── poc-outline.md       # Technical architecture and implementation detail
+    ├── REFACTOR-PLAN.md     # Architecture decisions
     ├── MVP-PLAN.md          # What comes after this POC
-    └── ROBUSTNESS.md        # Why verify-robust.ts exists and what it adds
+    └── TESTING.md           # Testing guide
 ```
 
 ---
@@ -88,18 +97,30 @@ The agent should catch all four.
 | Command | What it does |
 |---|---|
 | `npm run app` | Start the target React app on localhost:5173 |
-| `npm run verify` | Run the demo verification script |
-| `npm run verify:robust` | Run the production-grade script (recommended) |
+| `npm run verify` | Run verification against configured TARGET_URL |
+| `npm run auth:save` | Open browser to save login session (for auth-protected apps) |
 | `npm run validate` | Check code structure without running the app |
-| `npm test` | End-to-end test suite |
+
+## Authentication
+
+For staging environments with login:
+
+```bash
+# 1. Configure the login URL in .env
+AUTH_SESSION_PATH=./auth/session.json
+
+# 2. Open browser and login manually
+npm run auth:save
+# Browser opens → login → close browser
+# Session saved to auth/session.json
+
+# 3. Run verification (uses saved session)
+npm run verify
+```
 
 ---
 
 ## Testing
-
-**No API key?** Run `npm run validate` to verify code structure (25 automated checks)
-
-**Have API key?** See **[Testing Guide](docs/TESTING.md)** for 5 different test options
 
 **Quick validation:**
 ```bash
@@ -108,12 +129,21 @@ npm run app               # Starts target app
 npm run verify            # Runs full verification (requires API key)
 ```
 
+The runner generates:
+- JSON report in `reports/report-<timestamp>.json`
+- Initial screenshot in `reports/<timestamp>_initial-state.png`
+- Exit codes: 0 (pass), 1 (drift detected), 2 (error)
+
+See **[Testing Guide](docs/TESTING.md)** for detailed testing instructions.
+
 ---
 
 ## Docs
 
-- **[Testing Guide](docs/TESTING.md)** — 5 ways to test, with and without API keys
-- **[Technical Architecture](docs/poc-outline.md)** — How the agent is built, API usage, design decisions
+- **[Evaluation](EVALUATION.md)** ⭐ — Comprehensive POC assessment and grade
+- **[Action Plan](ACTION-PLAN.md)** — Prioritized next steps to MVP
+- **[Refactor Plan](docs/REFACTOR-PLAN.md)** — Architecture decisions and design rationale
 - **[MVP Plan](docs/MVP-PLAN.md)** — What this becomes after the POC
-- **[Robustness](docs/ROBUSTNESS.md)** — What `verify-robust.ts` adds and why
+- **[Testing Guide](docs/TESTING.md)** — How to test and validate
+- **[POC Outline](docs/poc-outline.md)** — Original POC design and learnings
 - **[Setup Checklist](docs/SETUP-CHECKLIST.md)** — Troubleshooting and verification steps

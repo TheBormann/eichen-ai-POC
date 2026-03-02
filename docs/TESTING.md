@@ -6,7 +6,7 @@ There are multiple ways to test this depending on what you have available.
 
 ## Option 1: Full Test (Requires API Key)
 
-This runs the complete end-to-end verification.
+This runs the complete end-to-end verification with the unified runner.
 
 ### Prerequisites
 - Node.js 20+
@@ -21,12 +21,14 @@ npm install
 cd target-app && npm install && cd ..
 ```
 
-**2. Configure API key:**
+**2. Configure:**
 ```bash
 cp .env.example .env
-# Edit .env and add one of these:
-# OPENAI_API_KEY=sk-...
-# ANTHROPIC_API_KEY=sk-ant-...
+# Edit .env and configure:
+# OPENAI_API_KEY=sk-...           (or ANTHROPIC_API_KEY)
+# TARGET_URL=http://localhost:5173
+# SPEC_PATH=./specs/dashboard.md
+# HEADLESS=false
 ```
 
 **3. Start target app (terminal 1):**
@@ -45,54 +47,71 @@ npm run verify
 Chrome opens, navigates to the app, clicks around, then closes. Terminal shows:
 
 ```
-[observe] Nav elements found: ['Dashboard', 'Config', 'Help']
+═══════════════════════════════════════════
+  DOCUMENTATION DRIFT DETECTOR
+═══════════════════════════════════════════
 
-[extract] Settings page state: {
-  "page_title": "Settings",
-  "sections": [...]
-}
+[config] Target:   http://localhost:5173
+[config] Spec:     ./specs/dashboard.md
+[config] Headless: false
 
-[agent] Completed: true
-[agent] Actions taken: 8-12
+[agent] Starting verification pass...
 
 ═══════════════════════════════════════════
   VERIFICATION REPORT
 ═══════════════════════════════════════════
-  Agent Status: ✓ COMPLETED
-  Success: ✗ FAIL
+  Status: FAIL
+  Duration: 60-70s
+  Tokens: 50,000-52,000
+  Cost: $0.12-0.14
 
-  Agent Message:
-  Found discrepancies: Nav link says "Config" not "Settings",
-  toggle says "Enable Tracking" not "Enable Analytics",
-  toast says "Saved." not "Analytics enabled successfully."
-  
-[metrics] Total tokens: 4000-8000
-[metrics] Inference time: 8000-15000ms
+  Agent Summary:
+  The UI was verified against the specification. Failures found
+  in label, link, and message text standards.
+
+  Report saved: reports/report-<timestamp>.json
+═══════════════════════════════════════════
 ```
 
-**What this proves:** The agent successfully detected all 4 intentional bugs.
+Generated files:
+- `reports/report-<timestamp>.json` — structured verification results
+- `reports/<timestamp>_initial-state.png` — screenshot of starting state
+
+**What this proves:** The agent successfully detected drift. Exit code: 1
 
 ---
 
-## Option 2: Robust Version Test (Requires API Key)
+## Option 2: Test with Authentication
 
-Tests the production-grade script with screenshots and JSON reports.
+Tests the authentication flow for staging environments that require login.
 
+### Steps
+
+**1. Configure auth in .env:**
 ```bash
-# Terminal 1
-npm run app
-
-# Terminal 2
-npm run verify:robust
+# Set the target URL to a staging environment with login
+TARGET_URL=https://staging.example.com
+AUTH_SESSION_PATH=./auth/session.json
 ```
+
+**2. Save login session:**
+```bash
+npm run auth:save
+```
+Browser opens → manually log in → close browser when done. Session saved to `auth/session.json`.
+
+**3. Run verification:**
+```bash
+npm run verify
+```
+
+Runner loads the saved session automatically via Playwright's `storageState`.
 
 ### Expected Result
 
-Same as Option 1, but also creates:
-- `screenshots/` directory with PNG files
-- `screenshots/report-{timestamp}.json` with structured results
+Agent navigates the authenticated app without needing to log in again.
 
-**What this proves:** Production features (screenshots, JSON reports, retries) work.
+**What this proves:** Authentication persistence works for real-world staging environments.
 
 ---
 
@@ -224,13 +243,18 @@ cp .env.example .env
 ### Chrome not found
 Install Chrome from https://www.google.com/chrome/
 
-Or set the path manually in `agent/verify.ts`:
+Or set the path manually in `agent/runner.ts`:
 ```typescript
 localBrowserLaunchOptions: {
-  headless: false,
+  headless: config.headless,
   executablePath: '/path/to/chrome'
 }
 ```
+
+### "AUTH_SESSION_PATH file not found"
+This is expected if you haven't saved a session yet. Either:
+- Remove `AUTH_SESSION_PATH` from `.env` if testing against a public URL
+- Run `npm run auth:save` first to create the session file
 
 ---
 
@@ -241,18 +265,21 @@ localBrowserLaunchOptions: {
 | Structure Validation | ❌ No | Code structure, bugs present, API usage |
 | Manual App Test | ❌ No | React app runs, bugs are visible |
 | Full Verification | ✅ Yes | Agent detects bugs end-to-end |
-| Robust Version | ✅ Yes | Screenshots, JSON reports, retries |
-| Test Runner | ✅ Yes | Automated test harness works |
+| Authentication Flow | ✅ Yes | Session persistence for staging environments |
+| Quick Smoke Test | ❌ No | Stack is wired up correctly |
 
 For a quick demo without an API key: **Run Option 3 + Option 4**  
-For full validation: **Run Option 1 or Option 2**
+For full validation: **Run Option 1**  
+For auth testing: **Run Option 2**
 
 ---
 
 ## Cost Estimate
 
 Each full verification run costs:
-- OpenAI GPT-4o: ~4,000-8,000 tokens ≈ **$0.02-0.04**
-- Anthropic Claude Sonnet: ~4,000-8,000 tokens ≈ **$0.024-0.048**
+- OpenAI GPT-4o: ~50,000-52,000 tokens ≈ **$0.12-0.14**
+- Anthropic Claude Sonnet: ~50,000-52,000 tokens ≈ **$0.15-0.16**
 
-Running 10 test iterations ≈ **$0.20-0.50** total
+Running 10 test iterations ≈ **$1.20-1.60** total
+
+Note: Token usage is higher with the agent-based approach compared to manual `act()`/`extract()` calls, but provides autonomous multi-step reasoning.
