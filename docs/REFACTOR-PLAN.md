@@ -1,80 +1,55 @@
-# Refactor Plan
+# Architecture
 
-## Is the POC Good Enough?
+## Current state
 
-No. It proves the thesis. It does not come close to running against a real staging environment.
-
-It worked against the dummy app because the dummy app was designed to make it work — we planted the bugs, wrote the spec to match our exact code structure, and ran it on localhost with no auth.
-
-The moment you point it at a real staging URL, four things break immediately:
-
-1. **Auth** — Every real staging environment has a login. The agent has no way in.
-2. **Spec input** — The spec path is hardcoded. There is no way to pass a different spec without editing code.
-3. **Brittle manual comparison** — `verify-robust.ts` hardcodes field names like `"Enable Analytics"` and `"Settings"` in the comparison logic. This only works on the dummy app.
-4. **Two scripts, two configs, two output formats** — `verify.ts` and `verify-robust.ts` have drifted apart. Maintaining both is wasteful and confusing.
-
-There is also a deeper architectural flaw: `verify-robust.ts` runs a manual `observe` → `act` → `extract` → `extract` pass *and then* runs an agent pass. This is redundant. The agent can do the full verification in one pass. The manual steps add LLM cost and complexity without adding reliability.
-
----
-
-## Staging vs Production
-
-**Always staging. Never production.**
-
-The agent clicks things, fills forms, triggers state changes. On production that means:
-- Real user data being modified
-- Analytics events being fired
-- Emails potentially being sent
-- State changes being logged
-
-Staging exists precisely for this purpose. If a customer doesn't have a staging environment, the conversation starts there — not with us changing what we build.
-
-The one partial exception: **read-only verification on production** (observe + extract only, no act/agent). This is a post-MVP consideration and requires explicit user opt-in per run.
-
----
-
-## Current Architecture
-
-`agent/runner.ts` replaced the original two-script POC. It:
+`agent/runner.ts` is the unified runner. It:
 - Loads a YAML test suite (`suites/*.yaml`)
 - Handles authentication via saved Playwright session
 - Runs one agent pass per check with an explicit output schema
 - Writes structured JSON to `reports/`
-- Exits with the correct code (0 = pass, 1 = drift, 2 = error)
+- Exits with the correct code: `0` = pass, `1` = drift found, `2` = runner error
+
+The POC proves the loop works on a controlled dummy app. The dummy app was designed to make it work — planted bugs, spec written to match the exact code structure, no auth, localhost only.
+
+**What breaks on a real staging URL:**
+1. Auth — every real staging environment has a login
+2. Spec input — currently hardcoded path, no way to pull from Notion/Confluence/Jira
+3. Unknown UI complexity — the agent may behave differently on unfamiliar real apps
+4. No output channel — report goes to a local JSON file, not Slack or Jira
+
+These are the four things the next build sprint must solve. None of them require redesigning the core loop.
 
 ---
 
-## Repository Layout
+## Repository layout
 
 ```
 eichen-ai-POC/
 ├── agent/
-│   └── runner.ts              # Verification runner — loads suite, runs checks, writes report
+│   └── runner.ts              # Core runner — loads suite, runs checks, writes report
 ├── auth/
 │   ├── save-session.ts        # One-time helper: open browser → log in → save session
 │   └── session.example.json   # Template showing storageState shape
 ├── suites/
 │   └── demo.yaml              # Example suite for the demo app
 ├── reports/                   # Generated at runtime (gitignored)
-├── target-app/                # Demo React app with 4 intentional bugs
-└── .env.example               # API keys only — suite config lives in the suite file
+├── target-app/                # Demo React app with intentional bugs
+├── docs/
+│   └── product/
+│       └── settings-page.md   # Example PM-style spec used as agent input
+└── .env.example               # API keys — suite config lives in the suite file, not here
 ```
 
 ---
 
-## Auth Strategy
+## Auth strategy
 
-The correct pattern for handling authentication without storing credentials in code is Playwright's `storageState`.
+Playwright's `storageState` pattern handles auth without storing credentials in code.
 
 **How it works:**
-
-1. A one-time `auth/save-session.ts` script opens the browser, lets you log in manually, then saves the cookies and localStorage to `auth/session.json`.
-2. The main runner loads `session.json` at startup. The browser context already has valid cookies — no login step needed.
-3. `auth/session.json` is gitignored. It never leaves the developer's machine.
-
-This is the right pattern for two reasons:
-- Credentials never touch the codebase or environment variables
-- Works with any auth system (SSO, MFA, magic links) because a human does the initial login
+1. `auth/save-session.ts` opens a browser, lets you log in manually, saves cookies and localStorage to `auth/session.json`
+2. The main runner loads `session.json` at startup — the browser context already has valid cookies, no login step needed
+3. `auth/session.json` is gitignored and never leaves the machine
 
 ```typescript
 // In runner.ts
@@ -83,18 +58,30 @@ const context = await browser.newContext({
 });
 ```
 
+This works with any auth method — SSO, MFA, magic links — because a human does the initial login.
+
 ---
 
-## Agent Prompt Design
+## Staging vs. production
 
-Each check runs a focused single-purpose agent pass. The system prompt establishes the rules; the instruction contains the specific check:
+**Always staging. Never production.**
+
+The agent clicks things, fills forms, triggers state changes. On production that means real user data being modified, analytics events firing, emails potentially sending. Staging exists precisely for this purpose.
+
+Post-MVP exception: read-only verification on production (observe and extract only, no clicking). Requires explicit user opt-in per run. Not in scope now.
+
+---
+
+## Agent prompt design
+
+Each check runs a single focused agent pass. System prompt establishes the rules; the instruction contains the specific check:
 
 ```typescript
 systemPrompt: `You are a documentation QA agent verifying a live UI against a spec.
   RULES:
   - Quote UI text exactly as it appears. Never paraphrase.
   - If you cannot find an element the check mentions, that is a FAIL.
-  - Do not check anything not mentioned in the check description.`
+  - Do not verify anything not mentioned in the check.`
 
 instruction: `
   STEPS: ${check.steps}
@@ -106,15 +93,15 @@ instruction: `
 
 ---
 
-## The Output Contract
+## Output contract
 
-The runner should emit a single JSON file per run with this shape:
+One JSON file per run:
 
 ```typescript
 interface RunReport {
-  run_id: string;          // ISO timestamp
-  target_url: string;      // The URL that was tested
-  spec_path: string;       // The spec that was used
+  run_id: string;           // ISO timestamp
+  target_url: string;       // URL tested
+  spec_path: string;        // Spec used as input
   overall: "pass" | "fail" | "error";
   duration_ms: number;
   token_usage: {
@@ -124,36 +111,37 @@ interface RunReport {
     estimated_cost_usd: number;
   };
   findings: Array<{
-    requirement: string;   // What the spec says
+    requirement: string;    // What the spec claims
     status: "pass" | "fail" | "skip";
-    actual: string;        // What the UI showed
-    screenshot?: string;   // Path to screenshot if captured
+    actual: string;         // What the UI showed
+    screenshot?: string;    // Path to PNG if captured
   }>;
-  agent_summary: string;   // Agent's natural language summary
-  error?: string;          // If overall === "error"
+  agent_summary: string;    // Agent's natural language summary
+  error?: string;           // Only if overall === "error"
 }
 ```
 
-This shape is stable enough to parse in a CI pipeline, post to Slack, or store in a database.
+This shape is stable enough to parse in CI, post to Slack, or store in a database.
 
 ---
 
-## Next Build Steps
+## Next build steps
 
-1. **Test on real staging** — Auth session + real app + real spec → first real drift detection
-2. **Slack output** — Post report summary to a webhook on every run
-3. **Spec from Notion** — Add `spec_source: notion` + `notion_page_id` to suite file; runner fetches the page and uses it as the check content
-4. **Scheduling** — GitHub Action that runs suites on every deploy; exit code 1 opens an issue
+- [ ] Test on a real staging URL — auth session + real app + real spec → first real drift detection
+- [ ] Notion spec pull — add `spec_source: notion` + `notion_page_id` to suite file; runner fetches the page and uses it as the check content
+- [ ] Slack output — post report summary to a webhook on run completion
+- [ ] GitHub Action — run suites on every deploy; exit code 1 posts a comment or opens an issue
 
 ---
 
 ## Status
 
-- [x] Auth helper built (`auth/save-session.ts`)
-- [x] Unified runner built (`agent/runner.ts`)
-- [x] YAML suite format implemented (`suites/`)
+- [x] Auth helper (`auth/save-session.ts`)
+- [x] Unified runner (`agent/runner.ts`)
+- [x] YAML suite format (`suites/`)
 - [x] Structured JSON reports with per-check findings
 - [x] Exit codes: 0 pass / 1 drift / 2 error
-- [ ] Tested on real staging URL with auth
+- [ ] Tested on real staging URL with SSO auth
+- [ ] Notion spec pull
 - [ ] Slack output
-- [ ] Spec from Notion
+- [ ] GitHub Actions integration

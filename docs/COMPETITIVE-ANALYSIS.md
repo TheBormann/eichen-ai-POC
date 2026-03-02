@@ -1,208 +1,117 @@
-# Competitive Analysis — Documentation Drift Detector
+# Competitive Analysis
 
-## How Hard Is It to Beat Competitors?
+## The honest picture
 
-**TL;DR:** Tier 1 (drift detection) is crowded but you have differentiation. Tier 3 (doc maintenance) is wide open and uncontested.
+There is no direct competitor. Nobody is building doc-first, no-code-access documentation verification. That is both an opportunity (uncontested space) and a risk (we need to educate the market).
 
----
-
-## Competitive Landscape
-
-### Category 1: Traditional E2E Test Tools
-
-**Players:** Selenium, Cypress, Playwright, Puppeteer
-
-**What they do:**
-- Developers write test scripts in code
-- Tests run against UI to verify behavior
-- Brittle selectors break when UI changes
-
-**Why we're different:**
-- ✅ No code required — just point at a doc
-- ✅ No test maintenance — agent figures out what to check
-- ✅ Works without codebase access (critical for Navan)
-- ✅ Natural language specs vs. code
-
-**Moat strength:** Medium. They could add AI-powered test generation, but their business model is selling to developers, not PMs/QA. We sell to a different buyer.
+The competitive question is really: *what do customers use today instead?* The answer is: nothing systematic. They wait for support tickets. That is the baseline we are replacing.
 
 ---
 
-### Category 2: AI Test Automation
+## Category 1 — Traditional test tools (Cypress, Playwright, Selenium)
 
-**Players:** Autify, Testim, Mabl, Octomind
+**What they do:** Developers write test scripts in code. Tests verify UI behaviour. Selectors break when UI changes.
 
-**What they do:**
-- AI-powered test creation and maintenance
-- Self-healing tests that adapt to UI changes
-- Visual regression testing
+**Why customers use them:** Mature, well-documented, strong CI integrations.
 
-**Why we're different:**
-- ✅ **Tier 3 (doc maintenance)** — they don't do this at all
-- ✅ **No codebase access required** — most of them require it
-- ✅ **Doc-first workflow** — they still think in "tests", we think in "docs"
-- ⚠️ They have better visual regression (screenshots, pixel diffs)
-- ⚠️ They have more mature CI integrations
+**Why they don't solve our problem:**
+- Require a developer to write and maintain tests — PMs and QA analysts can't use them unassisted
+- Require codebase access or at least test code in the same repo
+- Tests verify that the *software works*, not that the *docs are accurate* — a completely different goal
+- Brittle selectors break constantly, creating maintenance burden
 
-**Moat strength:** Medium-High. This is the closest competition for Tier 1. But they're not solving the doc maintenance problem (Tier 3), which is where the real differentiation is.
+**Overlap with us:** Minimal. They're testing tools; we're a documentation verification tool. Different buyer (developers vs. PMs/QA), different workflow, different goal.
+
+**Real risk:** Cypress or Playwright adds a "verify against plain English spec" mode powered by LLMs. Likelihood: medium-high (they're already adding AI features). Timeline: probably 12–18 months before it's good enough.
 
 ---
 
-### Category 3: Documentation Tools
+## Category 2 — AI test automation (Autify, Mabl, Testim, Octomind)
 
-**Players:** Notion, Confluence, GitBook, Docusaurus
+**What they do:** AI-assisted test creation and self-healing tests. Visual regression. Record-and-playback with AI maintenance.
 
-**What they do:**
-- Store and organize documentation
-- Version control for docs
-- Collaboration and comments
+**Why customers use them:** Easier to create tests than Cypress/Playwright; self-healing reduces maintenance burden.
 
-**Why we're different:**
-- ✅ They don't verify docs against reality
-- ✅ They don't auto-update docs when UI drifts
-- ✅ They're passive storage, we're active validation
+**Why they don't solve our problem:**
+- Still fundamentally test-first: you define what to test, then the tool runs it
+- Most require or benefit from codebase context to generate meaningful tests
+- Mabl and Testim need codebase access for some features; all of them have some level of repo integration in their workflows
+- They verify that *features work*, not that *docs are accurate*
+- None of them are building Tier 3 (doc maintenance / auto-updating docs)
 
-**Moat strength:** High. They could add verification features, but their DNA is content management, not testing/automation. Building what we have would be a significant pivot.
+**Overlap with us:** Moderate for Tier 1. They could theoretically add "verify a markdown spec" as a feature. But their product DNA is testing infrastructure, not documentation. The doc-maintenance vision (Tier 3) is completely outside their framing.
 
----
+**Real risk:** Autify or a well-funded newcomer copies our doc-first approach with more resources. Likelihood: high if we get visible traction. Timeline: 6–12 months to ship something comparable.
 
-### Category 4: Closest Direct Competitor
-
-**Player:** QA Wolf
-
-**What they do:**
-- Managed QA service + Playwright-based automation
-- Humans write tests initially, then AI maintains them
-- Full-service offering (tests as a service)
-
-**Why we're different:**
-- ✅ Self-service vs. managed service (different business model)
-- ✅ Doc-first vs. test-first
-- ✅ Tier 3 (doc maintenance) — they don't do this
-- ⚠️ They have proven customer demand (well-funded, growing)
-- ⚠️ They have human-in-the-loop quality (higher accuracy)
-
-**Moat strength:** Medium. They're well-funded ($36M Series B) and have traction. But they're a service business, we're a product. Different GTM, different buyer, different economics.
+**Mitigation:** Get embedded in customer workflows (Notion, Jira integrations) and build Tier 3 before they wake up.
 
 ---
 
-## Where We Win
+## Category 3 — QA services (QA Wolf, BrowserStack, Rainforest QA)
 
-### 1. No Codebase Access (Tier 1)
-**Why it matters:** Enterprise customers like Navan have strict security requirements. Third-party vendors can't access source code.
+**What they do:** Managed QA — humans or AI write and maintain tests as a service.
 
-**Who else does this:** Only visual testing tools (Percy, Applitools), but they don't do functional testing.
+**Why they don't solve our problem:**
+- Service businesses, not software — high-touch, expensive, doesn't scale the same way
+- QA Wolf ($36M Series B) is closest: Playwright-based automation with human oversight. But they're test-first and require full access to the app environment.
+- They're replacing QA engineers, not solving documentation drift
 
-**Moat strength:** High. This is a hard technical constraint that eliminates most competitors for specific customer segments.
-
----
-
-### 2. Doc-First Workflow (Tier 1)
-**Why it matters:** PMs and QA write docs anyway. Making them write separate tests is duplicate work.
-
-**Who else does this:** Nobody. Everyone else starts with "write a test" or "record a test".
-
-**Moat strength:** Medium-High. Requires a mindset shift from "testing" to "documentation verification". Incumbents are locked into their existing workflows.
+**Overlap with us:** Low. Different business model, different buyer, different problem.
 
 ---
 
-### 3. Doc Maintenance (Tier 3) — THE DIFFERENTIATOR
-**Why it matters:** Keeping docs accurate is a chronic, unsolved problem. Every company struggles with this. Nobody has built a good solution.
+## Category 4 — Documentation tools (Notion, Confluence, GitBook)
 
-**Who else does this:** **Nobody.** This category doesn't exist yet.
+**These are not competitors. They are integration partners.**
 
-**Moat strength:** Very High. This is net-new value. You're not competing, you're creating a category.
+They store docs. We verify docs against reality. A Notion user with drifting docs is exactly our ICP. We pull from Notion, verify against staging, post the report back to Notion or Jira.
 
-**Why competitors won't copy fast:**
-- Test automation companies think in "find bugs", not "maintain docs"
-- Documentation tools don't have the testing/automation DNA
-- Requires both domains (docs + testing) to see the opportunity
+**The risk:** Notion or Confluence builds a "verify this page against a URL" feature. Likelihood: low in the near term. Their product DNA is content management; this would be a significant pivot into browser automation and LLM reasoning. More likely they partner with or acquire us.
 
 ---
 
-## How to Build a Moat
+## Where we genuinely win
 
-### Short-term (6 months)
-1. **Get 3-5 enterprise design partners** — prove Tier 1 + Tier 2 with real customers
-2. **Build Tier 3 MVP** — auto-PR generation for doc updates
-3. **Content marketing** — write the definitive guides on "documentation drift" and "living documentation"
-   - Nobody else is talking about this problem → own the category
+### No codebase access (Tier 1)
+Enterprise security blocks vendor repo access. This is a hard constraint at companies like Navan. Visual testing tools (Percy, Applitools) also don't need codebase access, but they only do pixel-level visual comparison — they don't verify semantic claims like "button is labeled X" or "error message says Y."
 
-### Medium-term (1-2 years)
-1. **Integration moat** — deep integrations with Notion, Confluence, Jira, Linear
-   - "When you close a Jira ticket, our agent verifies the spec was shipped"
-   - Becomes part of the workflow, not a separate tool
-2. **Data moat** — learn from thousands of docs + UIs
-   - Better heuristics for "what's worth checking"
-   - Better suggestions for doc updates
-3. **Brand moat** — become synonymous with "living documentation"
+**Moat strength:** High for the enterprise segment. Medium overall.
 
----
+### Doc-first workflow (Tier 1)
+Every other tool starts with "write a test" or "record an interaction." We start with "point at a doc." PMs already write the docs. We make docs executable.
 
-## Key Strategic Questions
+**Moat strength:** Medium-high. Requires a mindset shift. Incumbents are locked into test-first thinking.
 
-### Should you compete in Tier 1 (drift detection) at all?
-**Pro:** Easier to sell (existing category), faster revenue
-**Con:** Crowded market, hard to differentiate, low margins
+### Tier 3 — doc maintenance (the actual moat)
+No one is building this. The agent doesn't just find drift — it proposes the fix. Pull request with a suggested doc update, tech writer reviews and merges.
 
-**Recommendation:** Use Tier 1 as a wedge to sell Tier 3. Don't try to beat Cypress/Playwright on their turf. Win the customers they can't serve (no codebase access, doc-first workflows).
+This requires combining: accurate drift detection (Tier 1) + doc writing capability + understanding of what a good doc update looks like + integration into the doc workflow (Notion/Confluence PR-equivalent). That is a lot of accumulated capability that compounds over time.
+
+**Moat strength:** Very high. Novel category. Competitors think in "find bugs", not "maintain docs." Getting there first and owning the customer workflow is the play.
 
 ---
 
-### Should you start with Tier 3 (doc maintenance)?
-**Pro:** Uncontested space, high differentiation, category creation
-**Con:** Harder to sell (new category), longer sales cycles, need to educate market
+## Strategy summary
 
-**Recommendation:** Build Tier 1 + Tier 3 together. Lead with Tier 1 to get in the door ("find drift"), then upsell Tier 3 ("keep docs accurate automatically"). This is the classic wedge → platform strategy.
+| Tier | Competitive situation | Our move |
+|---|---|---|
+| 1. Drift detection | Crowded adjacent space, but no direct competitor | Enter via enterprises that block codebase access; own the doc-first narrative |
+| 2. CI integration | Commoditised — every tool does this | Package it, don't differentiate on it |
+| 3. Doc maintenance | Completely uncontested | Build fast, get design partners embedded, define the category |
 
----
+**The wedge → platform strategy:**  
+Use Tier 1 to get in the door ("we found 3 doc inconsistencies you didn't know about"). Upsell Tier 3 once they trust the output ("now we'll propose the fixes too"). This is the classic wedge → platform play.
 
-## Risks & Mitigations
-
-### Risk 1: OpenAI/Anthropic builds this
-**Likelihood:** Low
-**Why:** They're platform companies, not application companies. They want you to build on them, not compete with you.
-**Mitigation:** Move fast. First-mover advantage matters in AI applications.
+Do not try to beat Cypress on testing or Autify on AI test automation. Win the customers they cannot serve (no code access, doc-first workflow, enterprises with legal blocks on vendor repo access).
 
 ---
 
-### Risk 2: Playwright/Cypress adds AI features
-**Likelihood:** Medium-High (they're already doing this)
-**Why:** Obvious adjacency for them
-**Mitigation:** Own the doc-first workflow and Tier 3. They're locked into developer workflows. You're selling to PMs/QA/Tech Writers.
+## Window to act
 
----
+The 12–18 month estimate for the moat window is based on:
+- Autify/Mabl seeing what we're doing and shipping a doc-first mode: 6–12 months
+- Notion/Confluence adding verification features: 18–24 months
+- OpenAI or Anthropic building a vertical application: unlikely (they're platforms)
+- A well-funded startup copying us after we get visible: 6–12 months from the moment we're visible
 
-### Risk 3: A well-funded startup copies you
-**Likelihood:** High (if you get traction)
-**Why:** AI + testing is hot, raising money is easy
-**Mitigation:** Speed + integrations + brand. Be the default solution before they launch. Get embedded in customer workflows (Notion, Jira, etc.).
-
----
-
-## The Bottom Line
-
-**Can you beat competitors?**
-- Tier 1 (drift detection): **Medium difficulty** — crowded but you have differentiation
-- Tier 2 (CI integration): **Low difficulty** — commoditized, everyone can do this
-- Tier 3 (doc maintenance): **Low difficulty** — nobody else is doing it, you define the category
-
-**The winning strategy:**
-1. Use Tier 1 as a wedge (sell drift detection to get in the door)
-2. Differentiate on "no codebase access" and "doc-first workflow"
-3. Win long-term with Tier 3 (living documentation)
-
-**Time to moat:** 12-18 months if you execute well. The category doesn't exist yet. You have a window to define it.
-
----
-
-## Elevator Pitch (30 seconds)
-
-"Product docs drift from reality, and nobody catches it until customers complain. We built an AI agent that reads your docs, tests your live UI, and tells you exactly what's wrong — no code, no test scripts, no codebase access required. We're the only solution that works for companies like Navan who can't give vendors source code. And we're building the first tool that automatically updates your docs when the UI changes — turning documentation from a liability into a living asset."
-
----
-
-## One-Sentence Positioning
-
-**For Tier 1:** "Autonomous documentation verification for teams without codebase access"
-
-**For Tier 3:** "The first living documentation platform that keeps itself accurate"
+The window is real but not forever. The priority is getting design partners embedded in workflows (Notion, Jira, Slack) before competitors ship. Switching cost grows every week a customer runs eichen.
