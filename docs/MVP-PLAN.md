@@ -30,25 +30,91 @@ The human who wrote the original docs understood the product deeply — they cap
 
 ---
 
+## The architecture that makes this work at scale
+
+The POC proves the core loop: doc → agent → UI → report. But it re-reads the full doc and re-tests everything from scratch on every run. That doesn't scale, and it doesn't solve the feature flag problem.
+
+The MVP needs a smarter data model:
+
+### Phase 1 — Build a test library from existing docs
+
+When a customer onboards, we read all their existing documentation (Notion, Confluence, Jira tickets) and extract every testable claim into a structured test library:
+
+```
+[Jira ticket / Notion page]
+         │
+         ▼
+  Agent extracts testable claims
+  e.g. "Settings nav link is labeled 'Settings'"
+       "Analytics toggle is labeled 'Enable Analytics'"
+       "Save button shows error if no channels selected"
+         │
+         ▼
+  Stored as versioned test library
+         │
+         ▼
+  Run against staging → establish baseline pass/fail for each claim
+```
+
+Each claim in the library is linked back to the source doc it came from. If a claim can't be verified (element not found in the current staging env), it's marked `skipped — not visible` rather than `fail`. This is how we handle feature flags without needing to know which flags exist.
+
+### Phase 2 — Incremental verification on new changes
+
+When a new Jira ticket is closed or a deploy happens:
+
+```
+New Jira ticket / deploy event
+         │
+         ▼
+  Agent reads the new ticket
+         │
+         ▼
+  Compares ticket content to existing test library:
+  "Which existing tests could this change affect?"
+         │
+         ▼
+  Re-runs only the affected tests
+         │
+         ▼
+  Reports: what drifted, which doc claim is now wrong, which source ticket to update
+```
+
+This is diff-based testing. It gets cheaper and faster as the test library matures, not more expensive. You never test everything on every deploy — you test what the change touched.
+
+### Why this solves the feature flag problem
+
+We don't try to enumerate flag combinations. We can't — that's exponential, and customers don't even have staging environments for every combination. Instead:
+
+- Claims that can't be found in the current staging env are marked `skipped — not visible`
+- Over time, the test library learns which claims are consistently visible vs. flag-gated
+- When a flag is turned on in a staging env, those claims become testable for the first time
+- The customer points us at the specific staging env where a flag is active; we test that env for the claims relevant to that flag
+
+This is the practical answer. The full combinatorial problem (n flags = 2ⁿ combinations) is an infrastructure problem that customers already have. We don't introduce it and we don't need to solve it — we just need to be honest about what's testable in a given environment.
+
+---
+
 ## What the MVP is
 
 The smallest thing a real customer can run on their real staging environment.
 
 **Required inputs from the customer:**
 1. A staging URL (or demo environment)
-2. Their existing written docs — Notion page, Confluence article, Jira ticket body, or markdown file
+2. Their existing written docs — Notion pages, Confluence articles, Jira ticket bodies, or markdown files
+3. A webhook or GitHub Actions integration to trigger runs on deploy
 
 **What we do:**
-1. Pull the doc from wherever it lives
-2. Open the staging environment in a cloud browser
-3. Navigate and verify every claim in the doc
-4. Post a drift report to Slack or add a comment on the Jira ticket
+1. Ingest all docs → extract testable claims → store as test library
+2. Run baseline verification on staging → mark what passes, what fails, what's not visible
+3. On each new ticket or deploy → identify affected claims → re-run only those
+4. Post drift report to Slack or Jira comment: what changed, which claim is now wrong, which doc needs updating
 
 **What the MVP is not:**
 - A doc generator — if there are no existing docs, we cannot help
 - A code analyser — we never touch the codebase
 - A QA replacement — we catch documentation drift, not functional bugs
 - An always-on monitor — we run on schedule or on deploy, not continuously
+- A feature flag manager — we don't enumerate flag combinations; we test what's visible in a given env
 
 ---
 
@@ -61,6 +127,7 @@ The POC runs on a dummy app we built to make it work. The next step is a real cu
 - [ ] Point `npm run verify` at a real staging URL
 - [ ] Confirm auth session loading works with the customer's SSO
 - [ ] Confirm the agent does not hallucinate significantly on an unfamiliar real app
+- [ ] Handle `skipped — not visible` gracefully (don't fail on feature-flagged elements)
 - [ ] Record a 60-second screen capture showing one real drift finding
 
 **Key question:** how accurately does the agent behave on a complex, unfamiliar UI vs. a controlled dummy app?
@@ -69,57 +136,71 @@ The POC runs on a dummy app we built to make it work. The next step is a real cu
 
 ---
 
-### Stage 2 — Pull spec from Notion or Confluence (2–3 days per source)
+### Stage 2 — Build the test library from existing docs (1 week)
 
-Replace the local markdown file with a live pull from wherever the customer's docs live. The verification logic does not change — only the input mechanism.
+Instead of re-reading the full doc on every run, extract claims once and store them:
 
-Priority order based on where PM-level docs actually live:
+- [ ] Agent reads source doc, extracts structured testable claims
+- [ ] Claims stored with: source doc reference, claim text, first-run status (pass/fail/skipped)
+- [ ] Subsequent runs re-use the library; only re-read source docs when they change
 
+This is the data model that makes incremental verification possible.
+
+**Deliverable:** claim library persisted between runs; reports link findings back to source doc and line
+
+---
+
+### Stage 3 — Pull spec from Notion or Confluence (2–3 days per source)
+
+Replace the local markdown file with a live pull from wherever the customer's docs live.
+
+Priority order:
 1. **Notion** — Most PMs write there. Public API: one `GET /blocks/{id}/children` call returns the page as structured text.
-2. **Jira ticket body** — Navan specifically mentioned PRD context living in Jira tickets. Pull the ticket description as the spec.
-3. **Confluence** — Second most common. Atlassian REST API, slightly more complex auth.
+2. **Jira ticket body** — Navan specifically mentioned PRD context living in Jira tickets.
+3. **Confluence** — Atlassian REST API.
 4. **GitHub markdown** — Lowest friction for engineering-owned docs.
-
-Suite file changes needed per source:
-```yaml
-spec_source: notion
-notion_page_id: abc123
-# or
-spec_source: jira
-jira_ticket: ENG-4521
-```
 
 **Deliverable:** agent pulls a Notion page, verifies staging, reports drift — no local files involved
 
 ---
 
-### Stage 3 — Output to where teams look (1 day per channel)
+### Stage 4 — Incremental diffing on new Jira tickets (3–5 days)
 
-A report nobody reads is useless. Output needs to land somewhere the team acts.
+When a new ticket is created or closed:
+
+- [ ] Pull the ticket body
+- [ ] LLM compares ticket to existing claim library: "which claims could this change affect?"
+- [ ] Re-run only affected claims against staging
+- [ ] If drift detected: report links to both the failing claim and the Jira ticket that caused the change
+
+This is the highest-value automation: you catch drift at the moment it happens, not weeks later.
+
+**Deliverable:** drift detected and reported within minutes of a Jira ticket being closed
+
+---
+
+### Stage 5 — Output to where teams look (1 day per channel)
 
 Priority order:
-
-1. **Slack webhook** — Post drift summary to a channel. Immediate, no new tool for the team.
-2. **Jira comment** — If the spec came from a Jira ticket, post the report as a comment on that ticket. The ticket that defined the feature gets notified when that feature drifts. Closes the loop.
+1. **Slack webhook** — Post drift summary to a channel. Immediate.
+2. **Jira comment** — Post the report as a comment on the ticket whose body was used as the spec.
 3. **GitHub PR comment** — If triggered on deploy, post to the PR that triggered it.
-4. **Email** — Lowest priority. Teams don't act on email.
 
 **Deliverable:** Slack message with structured drift report and screenshot attached
 
 ---
 
-### Stage 4 — Trigger on deploy, not on schedule (1–2 days)
+## The feature flag question — honest assessment
 
-Running on a schedule catches drift after the fact. Running on every deploy catches it immediately.
+Feature flags are the hardest unsolved problem in this space. Our position:
 
-Integration options:
-- **GitHub Actions** — `on: push to main` or `on: deployment`. Run `npm run verify` as a job. Exit code 1 opens an issue or posts to Slack automatically.
-- **Vercel deploy hooks** — Webhook on successful deploy triggers a verification run.
-- **Feature flag events** — Split.io/LaunchDarkly flag turned on → trigger verification for that feature's documentation. This is the highest-signal trigger.
+**What we do:** Test what's visible in the staging env we're given. Mark invisible claims as `skipped`. Over time, map which claims appear under which conditions.
 
-The runner already exits with the correct codes. CI integration is wiring, not product work.
+**What we don't do:** Enumerate flag combinations. Dynamically spin up staging envs with specific flag states. Integrate with Split.io or LaunchDarkly to know which flags are on.
 
-**Deliverable:** GitHub Action that runs doc verification on every merge to main
+**Why:** Dynamically creating staging environments per flag combination requires deep infrastructure access that's as blocked as codebase access. And the combinatorial space (n flags = 2ⁿ combinations) grows faster than any test suite can handle. The customers who feel this pain most acutely already have a process for it — usually a small set of "canonical" staging environments with known flag states. We test those envs.
+
+**The practical answer for design partners:** Ask them to give us one staging URL per "environment profile" they care about (e.g., "staging with analytics on", "staging with new checkout on"). We run the relevant doc claims against each profile. No combinatorial problem; just multiple target URLs.
 
 ---
 
@@ -131,25 +212,19 @@ Nicolas said "keep in touch." The follow-up should not be another discovery call
 - A spec from one of their actual Jira tickets or Notion pages
 - The agent catching one real inconsistency they did not know about
 
-That is what converts "validated idea" to design partner. The POC exists to enable that conversation.
-
 **Next step:** ask Nicolas to send one Jira ticket that describes a feature we can verify against their staging URL. Offer to run it for free and share the output.
+
+Feature flag complexity: leave for the design partner phase. If it comes up during the demo, the honest answer is "we test what's visible in the env you give us — if a feature is flagged off, we'll mark that claim as skipped rather than failing it."
 
 ---
 
 ## Finding the next 2–3 design partners
 
 Profile to target:
-- B2B SaaS, 50–500 employees
-- Ships weekly or faster
+- B2B SaaS, 50–500 employees, shipping weekly or faster
 - Has existing written product docs (Notion, Confluence, Jira)
-- Has a staging environment (not just production)
+- Has a staging environment
 - Strict on security (no codebase access for vendors) — this is our strongest entry point
-
-Where to find them:
-- Companies using Notion or Confluence heavily (public job listings mention "Notion-heavy team")
-- Companies with "Head of QA" or "Technical Writer" roles open — they feel the pain directly
-- YC companies in B2B SaaS — typically fast-shipping, have staging envs, understand the problem quickly
 
 **Offer:** free 3-month pilot in exchange for weekly feedback calls and permission to use as a case study
 
@@ -158,6 +233,7 @@ Where to find them:
 ## What success looks like at the end of the design partner phase
 
 - 3–5 companies running eichen on their real staging environments
-- At least one drift finding per customer per month that they would not have caught otherwise
+- Test library built from their real docs, running incrementally on deploy
+- At least one drift finding per customer per month they would not have caught otherwise
 - At least 2 customers willing to pay $200–500/month when the free trial ends
-- Clear answers to: what claim types does the agent get wrong? What makes a good input doc? What output format do teams actually act on?
+- Clear answers to: what claim types does the agent get wrong? What makes a good input doc? How does the incremental diff perform on real-world ticket sizes?

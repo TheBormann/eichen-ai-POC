@@ -49,7 +49,7 @@ Two reasons the UI-only approach is correct, not just convenient:
 
 ---
 
-## What the POC proves
+## What the POC proves (and what it doesn't)
 
 The POC is a working implementation of the core loop:
 
@@ -64,7 +64,32 @@ The POC is a working implementation of the core loop:
 - All intentional bugs in the demo app caught correctly
 - Clean exit codes (0/1/2) for CI integration
 
-The POC is not production-ready. It runs on a dummy app. The next step is running it on a real customer's staging environment with their real docs.
+**What the POC does not do** (and the MVP must):
+- Re-reads the entire doc and re-tests everything on every run — doesn't scale
+- Has no concept of a test library — each run is stateless
+- Cannot handle feature flags gracefully (fails instead of skipping invisible claims)
+- No incremental diffing — can't identify which claims a new Jira ticket might affect
+
+The POC proves the thesis. The MVP is a real product with a real data model.
+
+---
+
+## The MVP architecture (beyond the POC)
+
+The POC runs the full doc on every run. The MVP needs a smarter data model:
+
+**Phase 1 — Build a test library from existing docs**  
+Read all customer docs once, extract every testable claim, store as a versioned library linked back to source. Run baseline verification on staging. Claims for feature-flagged elements that aren't visible get marked `skipped — not visible`, not `fail`.
+
+**Phase 2 — Incremental verification on change events**  
+When a new Jira ticket closes or a deploy fires, the agent reads the new ticket and asks: *which existing tests could this change affect?* It re-runs only those. Drift is caught at the moment of change, not weeks later.
+
+This solves three things at once:
+- Feature flags — invisible claims are skipped, not failed; over time the library maps which claims appear in which environments
+- Scalability — runs get cheaper as the library matures, not more expensive
+- Relevance — every finding links back to the specific ticket or doc section that caused it
+
+Feature flag combinations (n flags = 2ⁿ envs) remain genuinely hard. Our answer: test what's visible in the env you give us. Ask design partners to provide one staging URL per "canonical environment profile" they care about. The combinatorial problem belongs to the customer's infrastructure team, not us.
 
 ---
 
