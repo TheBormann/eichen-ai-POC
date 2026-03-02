@@ -33,69 +33,31 @@ The one partial exception: **read-only verification on production** (observe + e
 
 ---
 
-## What Needs to Be Rebuilt
+## Current Architecture
 
-### Delete
-
-- `agent/verify.ts` — superseded
-- `agent/verify-robust.ts` — superseded
-- `agent/test-runner.ts` — depends on the above, rebuild as part of the runner
-- `agent/validate-structure.ts` — useful but needs updating
-
-### Keep
-
-- `specs/dashboard.md` — good format, keep as the canonical example
-- `target-app/` — the dummy app, no changes needed
-- All docs — updated separately
-
-### Build
-
-A single `agent/runner.ts` that:
-- Accepts config via environment variables (URL, spec path, auth strategy)
-- Handles authentication via saved session state (no credentials in code)
-- Runs one focused agent pass with a well-engineered prompt
-- Outputs structured JSON to a `reports/` directory
-- Prints a clean human-readable report to stdout
+`agent/runner.ts` replaced the original two-script POC. It:
+- Loads a YAML test suite (`suites/*.yaml`)
+- Handles authentication via saved Playwright session
+- Runs one agent pass per check with an explicit output schema
+- Writes structured JSON to `reports/`
 - Exits with the correct code (0 = pass, 1 = drift, 2 = error)
 
 ---
 
-## The New Architecture
+## Repository Layout
 
 ```
 eichen-ai-POC/
 ├── agent/
-│   └── runner.ts              # Single entry point, replaces both verify scripts
+│   └── runner.ts              # Verification runner — loads suite, runs checks, writes report
 ├── auth/
-│   └── session.example.json   # Example of what a saved auth state looks like
-├── specs/
-│   └── dashboard.md           # The example spec
-├── reports/                   # Generated at runtime, gitignored
-├── target-app/                # Unchanged
-└── .env.example               # Updated with all config options
-```
-
----
-
-## Configuration (`.env`)
-
-Everything the runner needs is driven by environment variables. No hardcoded paths or URLs anywhere in the code.
-
-```bash
-# Required
-OPENAI_API_KEY=sk-proj-...       # Or ANTHROPIC_API_KEY
-
-# Target
-TARGET_URL=https://staging.yourapp.com   # Any URL — localhost or real staging
-SPEC_PATH=./specs/dashboard.md           # Path to the spec file
-
-# Auth (optional — leave blank for public apps)
-AUTH_SESSION_PATH=./auth/session.json    # Playwright storageState file
-
-# Behaviour
-HEADLESS=true                            # true for CI, false for demos
-MAX_STEPS=30                             # Agent step budget
-REPORTS_DIR=./reports                    # Where to write JSON reports
+│   ├── save-session.ts        # One-time helper: open browser → log in → save session
+│   └── session.example.json   # Template showing storageState shape
+├── suites/
+│   └── demo.yaml              # Example suite for the demo app
+├── reports/                   # Generated at runtime (gitignored)
+├── target-app/                # Demo React app with 4 intentional bugs
+└── .env.example               # API keys only — suite config lives in the suite file
 ```
 
 ---
@@ -123,39 +85,24 @@ const context = await browser.newContext({
 
 ---
 
-## The Agent Prompt — What's Wrong Now and How to Fix It
+## Agent Prompt Design
 
-The current prompt dumps the entire spec into an instruction and tells the agent to "check every requirement." This is vague and produces inconsistent results.
-
-The better approach is to give the agent a **structured task** with an **explicit output contract**:
+Each check runs a focused single-purpose agent pass. The system prompt establishes the rules; the instruction contains the specific check:
 
 ```typescript
-const instruction = `
-  You are a documentation QA agent. Your job is to verify whether a live UI
-  matches a product specification exactly.
-
+systemPrompt: `You are a documentation QA agent verifying a live UI against a spec.
   RULES:
   - Quote UI text exactly as it appears. Never paraphrase.
-  - For every requirement you check, record: what the spec says, what you saw,
-    and whether they match.
-  - If you cannot find a UI element the spec mentions, that is a FAIL.
-  - Do not invent requirements that are not in the spec.
-  - Navigate to every page mentioned in the spec before concluding.
+  - If you cannot find an element the check mentions, that is a FAIL.
+  - Do not check anything not mentioned in the check description.`
 
-  SPECIFICATION:
-  ---
-  ${spec}
-  ---
-
-  When done, summarise every requirement you checked with pass/fail and exact quotes.
-`;
+instruction: `
+  STEPS: ${check.steps}
+  VERIFY: ${check.expect}
+  
+  Return: status (pass/fail), what you saw, what was expected.
+`
 ```
-
-The key changes from the current prompt:
-- Explicit quoting rule — reduces hallucination
-- "Cannot find element = FAIL" — prevents the agent from skipping missing elements
-- "Do not invent requirements" — prevents the agent from checking things not in the spec
-- "Navigate to every page" — ensures full coverage
 
 ---
 
@@ -191,69 +138,22 @@ This shape is stable enough to parse in a CI pipeline, post to Slack, or store i
 
 ---
 
-## Build Order
+## Next Build Steps
 
-### Step 1 — Auth helper (1 day)
-
-Build `auth/save-session.ts`. This is a prerequisite for testing against any real staging URL.
-
-```bash
-npm run auth:save  # Opens browser, you log in, session saved to auth/session.json
-```
-
-### Step 2 — Unified runner (2 days)
-
-Build `agent/runner.ts` with:
-- Full env-var config (URL, spec path, auth, headless, maxSteps)
-- Auth via `storageState`
-- Single agent pass with improved prompt
-- Structured JSON report output
-- Clean terminal output
-- Correct exit codes
-
-Delete `verify.ts`, `verify-robust.ts`.
-
-### Step 3 — Test against real staging (1–2 days)
-
-Point `TARGET_URL` at a real staging environment. This reveals:
-- Whether the auth session approach works for the customer's stack
-- How the agent behaves on a real complex app vs the dummy
-- What `maxSteps` budget is needed for real flows
-
-This is the most important test. The dummy app tells us nothing about real-world performance.
-
-### Step 4 — Slack output (1 day)
-
-Add a `--notify slack` flag that posts the report to a webhook URL. The report message should include:
-- Pass/fail status
-- Number of drifted requirements
-- The specific failures with exact quotes
-- A link to the full JSON report
-
-### Step 5 — Spec from Notion (1–2 days)
-
-Add `SPEC_SOURCE=notion` + `NOTION_PAGE_ID` env vars. Fetch the page content via the Notion API and pass it as the spec string. The runner itself does not change — only the spec loading step.
+1. **Test on real staging** — Auth session + real app + real spec → first real drift detection
+2. **Slack output** — Post report summary to a webhook on every run
+3. **Spec from Notion** — Add `spec_source: notion` + `notion_page_id` to suite file; runner fetches the page and uses it as the check content
+4. **Scheduling** — GitHub Action that runs suites on every deploy; exit code 1 opens an issue
 
 ---
 
-## What This Is Not Yet
+## Status
 
-After this refactor, the tool is still:
-- A command-line script run manually
-- Pointed at one URL and one spec at a time
-- Without a scheduling mechanism
-
-That is fine. The next layer (scheduling, multi-spec, web UI) comes after a real customer has validated that a single run against their staging environment produces useful output. Do not build the platform before the tool works.
-
----
-
-## Updated Definition of Done
-
-- [ ] `npm run auth:save` works and produces `auth/session.json`
-- [ ] `runner.ts` accepts `TARGET_URL`, `SPEC_PATH`, `AUTH_SESSION_PATH` from env
-- [ ] Runner works against `localhost:5173` (dummy app, no auth)
-- [ ] Runner works against a real staging URL with saved auth session
-- [ ] JSON report is written to `reports/` on every run
-- [ ] Exit code 0 on pass, 1 on drift, 2 on runner error
-- [ ] `verify.ts` and `verify-robust.ts` deleted
-- [ ] All docs updated to reflect the new single-script approach
+- [x] Auth helper built (`auth/save-session.ts`)
+- [x] Unified runner built (`agent/runner.ts`)
+- [x] YAML suite format implemented (`suites/`)
+- [x] Structured JSON reports with per-check findings
+- [x] Exit codes: 0 pass / 1 drift / 2 error
+- [ ] Tested on real staging URL with auth
+- [ ] Slack output
+- [ ] Spec from Notion

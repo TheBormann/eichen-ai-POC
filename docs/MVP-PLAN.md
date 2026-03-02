@@ -58,27 +58,28 @@ A scheduled agent that:
 
 ## Build Sequence
 
-### Stage 1 — Make the POC reliable (current)
+### Stage 1 — Working on a real staging environment (current)
 
-The POC proves the thesis on a dummy app. The remaining work:
+The POC proves the thesis on a dummy app with planted bugs. The next step is a real customer staging URL.
 
-- [ ] Run `verify-robust.ts` successfully against the demo app end-to-end
+- [ ] Run `npm run verify` against a real staging URL
+- [ ] Confirm auth session loading works with the customer's SSO
+- [ ] Confirm the agent does not hallucinate on an unfamiliar real app
 - [ ] Record a 60-second screen capture showing drift detection
-- [ ] Confirm the report is parseable and useful
 
-**Time estimate:** 1–2 days  
-**Deliverable:** A video and a JSON report showing caught bugs
+**Time estimate:** 3–5 days  
+**Deliverable:** Agent catches a real doc inconsistency on a customer's staging environment
 
 ---
 
 ### Stage 2 — Run it on a real staging environment
 
-Replace the dummy app with a customer's actual staging URL. The spec is still a local markdown file to start.
+Replace the dummy app with a customer's actual staging URL. Auth handled via saved Playwright session.
 
 Changes needed:
-- `TARGET_URL` environment variable (already in `verify-robust.ts`)
-- Handle authentication if the staging environment requires login (use Playwright's `storageState` to load saved session cookies — do not store credentials in the script)
-- Increase `maxSteps` for real apps with more complex flows
+- Point `TARGET_URL` in suite file at the staging environment
+- Run `npm run auth:save` once to save the login session
+- Adjust `max_steps` for the flow complexity
 
 Key question to answer at this stage: **how much does the agent hallucinate on an unfamiliar real app vs. a controlled dummy?**
 
@@ -126,11 +127,11 @@ Priority order:
 The highest-value trigger is "a feature just shipped." Running on a schedule catches drift late. Running after every deploy catches it immediately.
 
 Integration options:
-- **GitHub Actions** — `on: [deployment]` or `on: push to main`. Run `verify-robust.ts` as a job. Exit code 1 blocks the deployment or creates an issue automatically.
+- **GitHub Actions** — `on: [deployment]` or `on: push to main`. Run `npm run verify` as a job. Exit code 1 blocks the deployment or creates an issue automatically.
 - **Vercel deploy hooks** — Webhook on successful deploy triggers a verification run
 - **Split.io / LaunchDarkly** — Feature flag turned on → trigger verification for that feature's documentation
 
-The agent script already exits with the correct codes (0 = pass, 1 = drift detected). The CI/CD integration is wiring, not product work.
+The runner already exits with the correct codes (0 = all checks passed, 1 = drift detected, 2 = runner error). The CI/CD integration is wiring, not product work.
 
 **Time estimate:** 1–2 days  
 **Deliverable:** GitHub Action that runs verification on every merge to main
@@ -158,11 +159,11 @@ We are not replacing QA engineers or test suites. We are catching a specific cla
 ## Pricing Model (Early Hypothesis)
 
 Three cost components per verification run:
-- LLM tokens: ~5,000 tokens/run at ~$0.02/run
+- LLM tokens: ~50,000 tokens/run at ~$0.14/run (GPT-4o agent mode)
 - Browser runtime: Browserbase charges by session minute — roughly $0.05–0.15/run
 - Infrastructure: negligible at this scale
 
-**Unit economics are very favorable.** $0.20/run all-in at the high end. Even at 500 runs/month per customer, that is $100/month in direct costs.
+**Unit economics are workable.** ~$0.20–0.30/run all-in. Even at 500 runs/month per customer, that is $100–150/month in direct costs.
 
 Target pricing: **$200–500/month per team** for unlimited runs on one staging environment. Expand by number of environments or products.
 

@@ -1,0 +1,41 @@
+# Demo suite — verifies the target-app against its specification.
+#
+# The target-app has 4 intentional bugs. All 4 checks below should fail
+# when run against the unmodified app. This is the expected outcome.
+#
+# Run with:
+#   npm run verify -- --suite suites/demo.yaml
+
+target_url: http://localhost:5173
+suite: Settings Page (Demo)
+
+# auth_session: ./auth/session.json  # Uncomment for login-protected apps
+headless: false
+max_steps: 50
+
+checks:
+  - name: Navigation — Settings link
+    steps: Look at the top navigation bar.
+    expect: |
+      The navigation contains a link labeled exactly "Settings" that leads to the settings page.
+
+  - name: Settings — Analytics toggle label
+    steps: |
+      Click the link that leads to the Settings page.
+      Find the Analytics section.
+    expect: |
+      There is a toggle (checkbox) in the Analytics section labeled exactly "Enable Analytics".
+
+  - name: Settings — Save confirmation message
+    steps: |
+      Navigate to the Settings page.
+      Click the analytics toggle to enable it.
+    expect: |
+      A confirmation message appears reading exactly "Analytics enabled successfully."
+
+  - name: Settings — Validation on empty save
+    steps: |
+      Navigate to the Settings page.
+      Click the "Save Preferences" button without selecting any notification channels.
+    expect: |
+      An inline error message appears reading exactly "Please select at least one notification channel."

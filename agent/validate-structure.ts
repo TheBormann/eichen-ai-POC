@@ -1,268 +1,100 @@
 /**
- * Structure Validation Script
- * 
- * Validates the POC code without running it (no app or API keys needed)
+ * Structure Validator
+ *
+ * Checks that all required files are present and the demo app has its
+ * intentional bugs. No API key or running app needed.
+ *
+ * Usage:
+ *   npm run validate
  */
 
-import * as fs from 'fs';
-import * as path from 'path';
+import * as fs from "fs";
 
-interface ValidationResult {
-  check: string;
-  passed: boolean;
-  message: string;
+interface Result {
+  label: string;
+  pass: boolean;
 }
 
-const results: ValidationResult[] = [];
+const results: Result[] = [];
 
-function validate(check: string, condition: boolean, passMsg: string, failMsg: string) {
-  results.push({
-    check,
-    passed: condition,
-    message: condition ? passMsg : failMsg,
-  });
+function check(label: string, condition: boolean) {
+  results.push({ label, pass: condition });
 }
 
-function fileExists(filepath: string): boolean {
-  return fs.existsSync(filepath);
+function exists(p: string) {
+  return fs.existsSync(p);
 }
 
-function fileContains(filepath: string, searchString: string): boolean {
-  if (!fs.existsSync(filepath)) return false;
-  const content = fs.readFileSync(filepath, 'utf-8');
-  return content.includes(searchString);
+function contains(p: string, s: string) {
+  if (!fs.existsSync(p)) return false;
+  return fs.readFileSync(p, "utf-8").includes(s);
 }
+
+// ─── File presence ────────────────────────────────────────────────────────────
+
+check("agent/runner.ts",                  exists("./agent/runner.ts"));
+check("agent/validate-structure.ts",      exists("./agent/validate-structure.ts"));
+check("auth/save-session.ts",             exists("./auth/save-session.ts"));
+check("auth/session.example.json",        exists("./auth/session.example.json"));
+check("suites/demo.yaml",                 exists("./suites/demo.yaml"));
+check("target-app/src/App.tsx",           exists("./target-app/src/App.tsx"));
+check("target-app/src/pages/Settings.tsx", exists("./target-app/src/pages/Settings.tsx"));
+
+// ─── Demo app bugs ────────────────────────────────────────────────────────────
+
+check('Bug 1: nav says "Config"',         contains("./target-app/src/App.tsx", ">Config<"));
+check('Bug 2: toggle says "Enable Tracking"', contains("./target-app/src/pages/Settings.tsx", "Enable Tracking"));
+check('Bug 3: toast says "Saved."',       contains("./target-app/src/pages/Settings.tsx", 'setToast("Saved.")'));
+check("Bug 4: save handler does nothing", contains("./target-app/src/pages/Settings.tsx", "handleSavePreferences = () => {"));
+
+// ─── Runner correctness ───────────────────────────────────────────────────────
+
+check("runner loads YAML suite",          contains("./agent/runner.ts", "yaml.load"));
+check("runner has try/finally cleanup",   contains("./agent/runner.ts", "} finally {") && contains("./agent/runner.ts", "stagehand.close()"));
+check("runner has exit codes",            contains("./agent/runner.ts", "process.exit("));
+check("runner uses stagehand.context.pages()", contains("./agent/runner.ts", "stagehand.context.pages()"));
+check("runner uses stagehand.agent()",    contains("./agent/runner.ts", "stagehand.agent("));
+
+// ─── Suite file ───────────────────────────────────────────────────────────────
+
+check("demo suite has target_url",        contains("./suites/demo.yaml", "target_url:"));
+check("demo suite has checks",            contains("./suites/demo.yaml", "checks:"));
+
+// ─── Package config ───────────────────────────────────────────────────────────
+
+const pkg = JSON.parse(fs.readFileSync("./package.json", "utf-8"));
+check("script: verify",                   !!pkg.scripts?.verify);
+check("script: auth:save",                !!pkg.scripts?.["auth:save"]);
+check("script: validate",                 !!pkg.scripts?.validate);
+check("dep: @browserbasehq/stagehand",    !!pkg.dependencies?.["@browserbasehq/stagehand"]);
+// Note: check name updated to match actual API used in runner.ts
+check("dep: js-yaml",                     !!pkg.dependencies?.["js-yaml"]);
+check("dep: zod",                         !!pkg.dependencies?.zod);
+check("dep: dotenv",                      !!pkg.dependencies?.dotenv);
+
+// ─── Print results ────────────────────────────────────────────────────────────
 
 console.log("═══════════════════════════════════════════");
-console.log("  POC STRUCTURE VALIDATION");
+console.log("  STRUCTURE VALIDATION");
 console.log("═══════════════════════════════════════════\n");
 
-// Check critical files exist
-validate(
-  "Spec file exists",
-  fileExists("./specs/dashboard.md"),
-  "✓ Spec file found",
-  "✗ specs/dashboard.md missing"
-);
-
-validate(
-  "Original verify script exists",
-  fileExists("./agent/verify.ts"),
-  "✓ Original verify.ts found",
-  "✗ agent/verify.ts missing"
-);
-
-validate(
-  "Robust verify script exists",
-  fileExists("./agent/verify-robust.ts"),
-  "✓ Robust verify-robust.ts found",
-  "✗ agent/verify-robust.ts missing"
-);
-
-validate(
-  "Test runner exists",
-  fileExists("./agent/test-runner.ts"),
-  "✓ Test runner found",
-  "✗ agent/test-runner.ts missing"
-);
-
-validate(
-  "Target app exists",
-  fileExists("./target-app/src/App.tsx"),
-  "✓ Target app found",
-  "✗ target-app/src/App.tsx missing"
-);
-
-validate(
-  "Settings page exists",
-  fileExists("./target-app/src/pages/Settings.tsx"),
-  "✓ Settings page found",
-  "✗ target-app/src/pages/Settings.tsx missing"
-);
-
-// Check for intentional bugs in target app
-validate(
-  "Bug 1: Nav says Config (not Settings)",
-  fileContains("./target-app/src/App.tsx", ">Config<"),
-  "✓ Bug 1 present: Nav link",
-  "✗ Bug 1 missing - nav should say 'Config'"
-);
-
-validate(
-  "Bug 2: Toggle says Enable Tracking",
-  fileContains("./target-app/src/pages/Settings.tsx", "Enable Tracking"),
-  "✓ Bug 2 present: Toggle label",
-  "✗ Bug 2 missing - toggle should say 'Enable Tracking'"
-);
-
-validate(
-  "Bug 3: Toast says Saved",
-  fileContains("./target-app/src/pages/Settings.tsx", 'setToast("Saved.")'),
-  "✓ Bug 3 present: Toast text",
-  "✗ Bug 3 missing - toast should say 'Saved.'"
-);
-
-// Check Stagehand API usage is correct
-validate(
-  "Uses correct page access (context.pages())",
-  fileContains("./agent/verify.ts", "stagehand.context.pages()[0]"),
-  "✓ Correct v3 API: context.pages()[0]",
-  "✗ Using wrong API - should use context.pages()"
-);
-
-validate(
-  "Agent is instantiated correctly",
-  fileContains("./agent/verify.ts", "stagehand.agent({") && 
-  fileContains("./agent/verify.ts", "agent.execute({"),
-  "✓ Correct agent usage: agent() then execute()",
-  "✗ Agent API usage incorrect"
-);
-
-validate(
-  "Has try/finally for cleanup",
-  fileContains("./agent/verify.ts", "try {") && 
-  fileContains("./agent/verify.ts", "} finally {") &&
-  fileContains("./agent/verify.ts", "await stagehand.close()"),
-  "✓ Has proper cleanup with try/finally",
-  "✗ Missing cleanup code"
-);
-
-// Check robust version improvements
-validate(
-  "Robust version has retry logic",
-  fileContains("./agent/verify-robust.ts", "async function retryOperation"),
-  "✓ Retry logic implemented",
-  "✗ No retry logic found"
-);
-
-validate(
-  "Robust version has health check",
-  fileContains("./agent/verify-robust.ts", "async function waitForApp"),
-  "✓ Health check implemented",
-  "✗ No health check found"
-);
-
-validate(
-  "Robust version has screenshot function",
-  fileContains("./agent/verify-robust.ts", "async function saveScreenshot"),
-  "✓ Screenshot capability implemented",
-  "✗ No screenshot function found"
-);
-
-validate(
-  "Robust version parses spec",
-  fileContains("./agent/verify-robust.ts", "function parseSpec"),
-  "✓ Spec parsing implemented",
-  "✗ No spec parsing found"
-);
-
-validate(
-  "Robust version has structured report",
-  fileContains("./agent/verify-robust.ts", "const VerificationReport = z.object"),
-  "✓ Structured report schema defined",
-  "✗ No structured report schema"
-);
-
-validate(
-  "Robust version saves JSON report",
-  fileContains("./agent/verify-robust.ts", "fs.writeFileSync") &&
-  fileContains("./agent/verify-robust.ts", "report-"),
-  "✓ JSON report saving implemented",
-  "✗ No JSON report saving"
-);
-
-validate(
-  "Robust version has exit codes",
-  fileContains("./agent/verify-robust.ts", "process.exit(report.overall_pass ? 0 : 1)"),
-  "✓ Exit codes implemented (0=pass, 1=fail)",
-  "✗ No exit code logic"
-);
-
-// Check package.json scripts
-const packageJson = JSON.parse(fs.readFileSync("./package.json", "utf-8"));
-
-validate(
-  "Package has agent script",
-  !!packageJson.scripts?.agent,
-  "✓ 'npm run agent' script exists",
-  "✗ Missing 'agent' script"
-);
-
-validate(
-  "Package has robust agent script",
-  !!packageJson.scripts?.["agent:robust"],
-  "✓ 'npm run agent:robust' script exists",
-  "✗ Missing 'agent:robust' script"
-);
-
-validate(
-  "Package has test script",
-  !!packageJson.scripts?.test,
-  "✓ 'npm test' script exists",
-  "✗ Missing 'test' script"
-);
-
-// Check dependencies
-validate(
-  "Has Stagehand dependency",
-  !!packageJson.dependencies?.["@browserbasehq/stagehand"],
-  "✓ Stagehand dependency present",
-  "✗ Missing @browserbasehq/stagehand dependency"
-);
-
-validate(
-  "Has Zod dependency",
-  !!packageJson.dependencies?.zod,
-  "✓ Zod dependency present",
-  "✗ Missing zod dependency"
-);
-
-validate(
-  "Has dotenv dependency",
-  !!packageJson.dependencies?.dotenv,
-  "✓ dotenv dependency present (runtime, not dev)",
-  "✗ Missing or wrong placement of dotenv"
-);
-
-// Print results
-console.log("\nValidation Results:\n");
-
-const passed = results.filter(r => r.passed);
-const failed = results.filter(r => !r.passed);
-
-results.forEach((result) => {
-  const icon = result.passed ? "✓" : "✗";
-  const color = result.passed ? "" : "";
-  console.log(`${icon} ${result.check}`);
-  console.log(`   ${result.message}`);
-});
-
-console.log("\n" + "─".repeat(60));
-console.log(`Total: ${results.length} | Passed: ${passed.length} | Failed: ${failed.length}`);
-console.log("═".repeat(60) + "\n");
-
-// Evaluation
-if (failed.length === 0) {
-  console.log("✓ ALL STRUCTURE CHECKS PASSED\n");
-  console.log("Code structure analysis:");
-  console.log("  • All critical files present");
-  console.log("  • Intentional bugs correctly placed");
-  console.log("  • Stagehand v3 API used correctly");
-  console.log("  • Robust version has all improvements");
-  console.log("  • Package.json configured correctly");
-  console.log("\nThe POC is structurally sound and ready to run.\n");
-  console.log("Next steps:");
-  console.log("  1. Start target app: npm run app");
-  console.log("  2. Add API key to .env");
-  console.log("  3. Run verification: npm run verify:robust");
-  console.log("  4. Run tests: npm test\n");
-} else {
-  console.log("✗ STRUCTURE ISSUES FOUND\n");
-  console.log("Failed checks:");
-  failed.forEach(f => {
-    console.log(`  • ${f.check}: ${f.message}`);
-  });
-  console.log("\nFix these issues before running the POC.\n");
+for (const r of results) {
+  console.log(`${r.pass ? "✓" : "✗"} ${r.label}`);
 }
 
-process.exit(failed.length > 0 ? 1 : 0);
+const passed = results.filter((r) => r.pass).length;
+const failed = results.filter((r) => !r.pass).length;
+
+console.log("\n───────────────────────────────────────────");
+console.log(`Total: ${results.length}  ·  Passed: ${passed}  ·  Failed: ${failed}`);
+console.log("═══════════════════════════════════════════\n");
+
+if (failed === 0) {
+  console.log("All checks passed. Ready to run:\n");
+  console.log("  npm run app");
+  console.log("  npm run verify -- --suite suites/demo.yaml\n");
+} else {
+  console.log(`${failed} check(s) failed. Fix before running.\n`);
+}
+
+process.exit(failed > 0 ? 1 : 0);

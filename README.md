@@ -1,27 +1,61 @@
 # Eichen AI — Documentation Drift Detector
 
-> Human-written docs have the context. This tool keeps them accurate.
+> Human-written docs have the context. This keeps them accurate.
 
----
-
-## The Problem
-
-Fast-shipping teams update their UI constantly. Documentation — even when written by people who understand the product deeply — goes stale within days. The gap is not a writing problem. It is a verification problem: nobody checks whether what the docs say matches what the product actually does.
-
-The current workflow at companies like Navan: ship the feature, ignore the docs until a support ticket arrives.
-
----
-
-## What This Does
-
-An AI agent reads a plain-text product specification, opens a staging or demo UI in a real browser, executes every documented workflow, and reports exactly where the UI diverges from the spec.
+An AI agent reads a test suite, opens a staging UI in a real browser, executes every documented workflow, and reports exactly where the UI diverges from what the docs say.
 
 **No codebase access required.** The agent only sees what a user sees.
 
+---
+
+## How It Works
+
+You define test suites in YAML. Each suite targets a URL and contains one or more checks. Each check tells the agent what to do and what to verify.
+
+```yaml
+# suites/settings.yaml
+target_url: http://localhost:5173
+suite: Settings Page
+
+checks:
+  - name: Nav link label
+    steps: Click the navigation link that leads to the settings page
+    expect: The link is labeled exactly "Settings"
+
+  - name: Analytics toggle label
+    steps: Find the toggle in the Analytics section
+    expect: The toggle is labeled exactly "Enable Analytics"
+
+  - name: Save confirmation message
+    steps: Enable the analytics toggle by clicking it
+    expect: A confirmation message appears reading exactly "Analytics enabled successfully."
 ```
-Spec says:  Toggle labeled "Enable Analytics"
-UI shows:   Toggle labeled "Enable Tracking"
-Result:     ✗ FAIL — label drift detected
+
+Run it:
+
+```bash
+npm run verify -- --suite suites/settings.yaml
+```
+
+Output:
+
+```
+Suite: Settings Page  →  http://localhost:5173
+
+  ✗ Nav link label
+      expected: labeled exactly "Settings"
+      actual:   labeled "Config"
+
+  ✗ Analytics toggle label
+      expected: labeled exactly "Enable Analytics"
+      actual:   labeled "Enable Tracking"
+
+  ✗ Save confirmation message
+      expected: "Analytics enabled successfully."
+      actual:   "Saved."
+
+  3 checks  ·  0 passed  ·  3 failed  ·  $0.14  ·  68s
+  Report: reports/report-2026-03-01T23-01-22.json
 ```
 
 ---
@@ -37,58 +71,69 @@ cd target-app && npm install && cd ..
 
 # 2. Configure
 cp .env.example .env
-# Edit .env — add your API key and configure:
-#   TARGET_URL=http://localhost:5173
-#   SPEC_PATH=./specs/dashboard.md
-#   HEADLESS=false
+# Add OPENAI_API_KEY or ANTHROPIC_API_KEY
 
 # 3. Start the demo app (terminal 1)
 npm run app
 
-# 4. Run the agent (terminal 2)
-npm run verify
-```
-
-The agent opens Chrome, navigates the app, compares it against the spec, and generates:
-- Structured JSON report in `reports/`
-- Screenshot of initial state
-- Exit code: 0 (pass), 1 (drift), 2 (error)
-
----
-
-## Repository Structure
-
-```
-eichen-ai-POC/
-├── agent/
-│   └── runner.ts            # Unified verification runner
-├── auth/
-│   ├── save-session.ts      # Helper to save login sessions
-│   └── session.example.json # Template for auth sessions
-├── specs/
-│   └── dashboard.md         # The spec the agent verifies against
-├── reports/                 # Generated JSON reports and screenshots (gitignored)
-├── target-app/              # Dummy React app with 4 intentional bugs
-└── docs/
-    ├── REFACTOR-PLAN.md     # Architecture decisions
-    ├── MVP-PLAN.md          # What comes after this POC
-    └── TESTING.md           # Testing guide
+# 4. Run a suite (terminal 2)
+npm run verify -- --suite suites/demo.yaml
 ```
 
 ---
 
-## The Bugs in the Demo App
+## Test Suite Format
 
-The `target-app` is intentionally broken in four ways:
+Suites live in `suites/`. Each file is a YAML document:
 
-| Spec says | App does | Type |
-|---|---|---|
-| Nav link: "Settings" | Nav link: "Config" | Label drift |
-| Toggle: "Enable Analytics" | Toggle: "Enable Tracking" | Label drift |
-| Toast: "Analytics enabled successfully." | Toast: "Saved." | Copy drift |
-| Error shown when saving with no selection | No error shown | Missing behaviour |
+```yaml
+# Required
+target_url: https://staging.yourapp.com   # URL to open
+suite: Name of this suite                 # Human-readable label
 
-The agent should catch all four.
+# Optional
+auth_session: ./auth/session.json         # Playwright storageState (for login-protected apps)
+headless: true                            # true for CI, false to watch the browser
+max_steps: 50                             # Agent step budget per check
+
+checks:
+  - name: Short descriptive name          # Appears in report and terminal output
+    steps: |                              # What to do — plain English, the agent figures it out
+      Navigate to the checkout page.
+      Fill in the shipping address form.
+      Click "Continue to payment".
+    expect: |                             # What must be true — quoted exactly where precision matters
+      The page heading reads exactly "Payment Details".
+      A summary of the shipping address is visible.
+```
+
+**Writing good checks:**
+
+- `steps` is the workflow. Write it like you'd describe it to a new employee.
+- `expect` is the assertion. Use exact quotes for labels, messages, and headings.
+- One check per logical thing you want to verify. Don't bundle unrelated things.
+- If a check fails, the agent quotes exactly what it saw vs. what was expected.
+
+---
+
+## Authentication
+
+For staging environments with login:
+
+```bash
+# 1. Save your session (one-time)
+npm run auth:save
+# Browser opens → log in manually → close browser
+# Session saved to auth/session.json
+
+# 2. Reference it in your suite
+auth_session: ./auth/session.json
+
+# 3. Run as normal
+npm run verify -- --suite suites/my-suite.yaml
+```
+
+The session file stores cookies and localStorage. It is gitignored and never leaves your machine.
 
 ---
 
@@ -96,54 +141,26 @@ The agent should catch all four.
 
 | Command | What it does |
 |---|---|
-| `npm run app` | Start the target React app on localhost:5173 |
-| `npm run verify` | Run verification against configured TARGET_URL |
-| `npm run auth:save` | Open browser to save login session (for auth-protected apps) |
-| `npm run validate` | Check code structure without running the app |
-
-## Authentication
-
-For staging environments with login:
-
-```bash
-# 1. Configure the login URL in .env
-AUTH_SESSION_PATH=./auth/session.json
-
-# 2. Open browser and login manually
-npm run auth:save
-# Browser opens → login → close browser
-# Session saved to auth/session.json
-
-# 3. Run verification (uses saved session)
-npm run verify
-```
+| `npm run app` | Start the demo React app on localhost:5173 |
+| `npm run verify -- --suite <path>` | Run a test suite |
+| `npm run auth:save` | Open browser, log in, save session |
+| `npm run validate` | Check repo structure without running anything |
 
 ---
 
-## Testing
+## Output
 
-**Quick validation:**
-```bash
-npm run validate           # Checks code structure (no API needed)
-npm run app               # Starts target app
-npm run verify            # Runs full verification (requires API key)
-```
+Every run writes to `reports/`:
 
-The runner generates:
-- JSON report in `reports/report-<timestamp>.json`
-- Initial screenshot in `reports/<timestamp>_initial-state.png`
-- Exit codes: 0 (pass), 1 (drift detected), 2 (error)
+- `report-<timestamp>.json` — full structured results, one entry per check
+- `<timestamp>_<check-name>.png` — screenshot taken after each check
 
-See **[Testing Guide](docs/TESTING.md)** for detailed testing instructions.
+Exit codes: `0` = all checks passed · `1` = one or more checks failed · `2` = runner error
 
 ---
 
 ## Docs
 
-- **[Evaluation](EVALUATION.md)** ⭐ — Comprehensive POC assessment and grade
-- **[Action Plan](ACTION-PLAN.md)** — Prioritized next steps to MVP
-- **[Refactor Plan](docs/REFACTOR-PLAN.md)** — Architecture decisions and design rationale
-- **[MVP Plan](docs/MVP-PLAN.md)** — What this becomes after the POC
-- **[Testing Guide](docs/TESTING.md)** — How to test and validate
-- **[POC Outline](docs/poc-outline.md)** — Original POC design and learnings
-- **[Setup Checklist](docs/SETUP-CHECKLIST.md)** — Troubleshooting and verification steps
+- [Setup & Troubleshooting](docs/SETUP.md)
+- [MVP Plan](docs/MVP-PLAN.md)
+- [Architecture](docs/REFACTOR-PLAN.md)
