@@ -21,11 +21,18 @@ cp .env.example .env
 # Terminal 1 — start the demo app
 npm run app
 
-# Terminal 2 — run the demo suite
+# Terminal 2 — run doc mode (autonomous verification)
+npm run verify -- --doc docs/product/settings-page.md --url http://localhost:5173
+
+# Or run suite mode (structured checks)
 npm run verify -- --suite suites/demo.yaml
 ```
 
 Expected: agent opens Chrome, navigates the app, prints a report with 3–4 failures, exits with code 1.
+
+**Doc mode vs Suite mode:**
+- Doc mode reads a markdown document and autonomously figures out what to verify
+- Suite mode runs pre-defined YAML checks (better for CI/repeatable runs)
 
 ## Verify without an API key
 

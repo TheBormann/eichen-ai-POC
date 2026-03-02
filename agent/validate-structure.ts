@@ -37,6 +37,7 @@ check("agent/validate-structure.ts",      exists("./agent/validate-structure.ts"
 check("auth/save-session.ts",             exists("./auth/save-session.ts"));
 check("auth/session.example.json",        exists("./auth/session.example.json"));
 check("suites/demo.yaml",                 exists("./suites/demo.yaml"));
+check("docs/product/settings-page.md",    exists("./docs/product/settings-page.md"));
 check("target-app/src/App.tsx",           exists("./target-app/src/App.tsx"));
 check("target-app/src/pages/Settings.tsx", exists("./target-app/src/pages/Settings.tsx"));
 
@@ -49,6 +50,8 @@ check("Bug 4: save handler does nothing", contains("./target-app/src/pages/Setti
 
 // ─── Runner correctness ───────────────────────────────────────────────────────
 
+check("runner supports doc mode",         contains("./agent/runner.ts", "mode: \"doc\""));
+check("runner supports suite mode",       contains("./agent/runner.ts", "mode: \"suite\""));
 check("runner loads YAML suite",          contains("./agent/runner.ts", "yaml.load"));
 check("runner has try/finally cleanup",   contains("./agent/runner.ts", "} finally {") && contains("./agent/runner.ts", "stagehand.close()"));
 check("runner has exit codes",            contains("./agent/runner.ts", "process.exit("));
@@ -92,6 +95,7 @@ console.log("══════════════════════�
 if (failed === 0) {
   console.log("All checks passed. Ready to run:\n");
   console.log("  npm run app");
+  console.log("  npm run verify -- --doc docs/product/settings-page.md --url http://localhost:5173");
   console.log("  npm run verify -- --suite suites/demo.yaml\n");
 } else {
   console.log(`${failed} check(s) failed. Fix before running.\n`);

@@ -2,7 +2,7 @@
 
 > Human-written docs have the context. This keeps them accurate.
 
-An AI agent reads a test suite, opens a staging UI in a real browser, executes every documented workflow, and reports exactly where the UI diverges from what the docs say.
+An AI agent reads your product documentation, opens a staging UI in a real browser, and reports exactly where the UI diverges from what the docs say.
 
 **No codebase access required.** The agent only sees what a user sees.
 
@@ -10,7 +10,50 @@ An AI agent reads a test suite, opens a staging UI in a real browser, executes e
 
 ## How It Works
 
-You define test suites in YAML. Each suite targets a URL and contains one or more checks. Each check tells the agent what to do and what to verify.
+### Doc Mode (Primary)
+
+Point the agent at a markdown document and a URL. It reads the doc autonomously, figures out what to verify, navigates the UI, and reports discrepancies.
+
+```bash
+npm run verify -- --doc docs/product/settings-page.md --url http://localhost:5173
+```
+
+The document is written like a normal product spec (not a test script):
+
+```markdown
+# Settings Page
+
+The top navigation bar includes a link labeled "Settings".
+Clicking this link navigates to the /settings route.
+
+## Analytics Section
+The Analytics section contains a toggle labeled "Enable Analytics".
+When turned on, a confirmation message appears: "Analytics enabled successfully."
+```
+
+The agent autonomously:
+1. Reads the entire document
+2. Identifies every testable claim (labels, routes, messages, behaviors)
+3. Navigates the UI to verify each claim
+4. Reports pass/fail for each one
+
+Output:
+
+```
+  ✗ The top navigation bar includes a link labeled 'Settings'
+      expected: Settings
+      actual:   Link labeled "Config" instead
+
+  ✓ The Settings link navigates to the /settings route
+
+  ✗ When turned on, a confirmation message appears
+      expected: Analytics enabled successfully.
+      actual:   Message reads "Saved." instead
+```
+
+### Suite Mode (Structured)
+
+For repeatable CI runs where you've already defined exactly what to test, use YAML suites:
 
 ```yaml
 # suites/settings.yaml
@@ -76,7 +119,10 @@ cp .env.example .env
 # 3. Start the demo app (terminal 1)
 npm run app
 
-# 4. Run a suite (terminal 2)
+# 4. Run doc mode (terminal 2)
+npm run verify -- --doc docs/product/settings-page.md --url http://localhost:5173
+
+# Or run a structured suite
 npm run verify -- --suite suites/demo.yaml
 ```
 
@@ -142,9 +188,21 @@ The session file stores cookies and localStorage. It is gitignored and never lea
 | Command | What it does |
 |---|---|
 | `npm run app` | Start the demo React app on localhost:5173 |
-| `npm run verify -- --suite <path>` | Run a test suite |
+| `npm run verify -- --doc <path> --url <url>` | Run doc mode (autonomous verification) |
+| `npm run verify -- --suite <path>` | Run suite mode (structured YAML checks) |
 | `npm run auth:save` | Open browser, log in, save session |
 | `npm run validate` | Check repo structure without running anything |
+
+### Doc Mode Options
+
+```bash
+npm run verify -- --doc <path> --url <url> [options]
+
+Options:
+  --headless false     Show browser (default: true)
+  --max-steps 150      Agent step budget (default: 100)
+  --auth <path>        Use saved auth session
+```
 
 ---
 
